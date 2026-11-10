@@ -1,0 +1,140 @@
+name: Build unsigned Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Upstream branch, tag, or commit
+        required: false
+        default: main
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/android-unsigned.yml
+      - README.md
+      - HANDOFF.md
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-unsigned-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout build wrapper
+
+      - uses: actions/checkout@v4
+        name: Checkout upstream app
+        with:
+          repository: alvarolorentedev/opencode-mobile
+          ref: ${{ inputs.upstream_ref || 'main' }}
+          path: upstream
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: upstream/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        working-directory: upstream
+        run: npm ci
+
+      - name: Generate Android project
+        working-directory: upstream
+        env:
+          CI: '1'
+          EXPO_APP_VARIANT: production
+        run: npx expo prebuild --platform android --clean
+
+      - name: Remove release signing config
+        working-directory: upstream
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("android/app/build.gradle")
+          s = p.read_text()
+          m = re.search(r"(?m)^\s*release\s*\{", s)
+          if not m:
+              raise SystemExit("Release buildType not found")
+          brace = s.find("{", m.start())
+          depth = 0
+          end = None
+          for i in range(brace, len(s)):
+              if s[i] == "{":
+                  depth += 1
+              elif s[i] == "}":
+                  depth -= 1
+                  if depth == 0:
+                      end = i + 1
+                      break
+          if end is None:
+              raise SystemExit("Unbalanced release block")
+          block = s[m.start():end]
+          changed, count = re.subn(r"(?m)^\s*signingConfig\s+signingConfigs\.[A-Za-z0-9_]+\s*\n", "", block)
+          if count != 1:
+              raise SystemExit(f"Expected one release signing assignment, found {count}")
+          p.write_text(s[:m.start()] + changed + s[end:])
+          print("Release signing assignment removed; build will be unsigned.")
+          PY
+
+      - name: Build ARM64 release APK
+        working-directory: upstream/android
+        run: ./gradlew --no-daemon --stacktrace assembleRelease -PreactNativeArchitectures=arm64-v8a
+
+      - name: Verify unsigned APK and checksum
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          mkdir -p ../dist
+          cp "$APK" ../dist/opencode-mobile-unsigned-arm64.apk
+          if apksigner verify ../dist/opencode-mobile-unsigned-arm64.apk >/tmp/apksigner.log 2>&1; then
+            echo "::error::APK unexpectedly has a valid signature"
+            cat /tmp/apksigner.log
+            exit 1
+          fi
+          zipalign -c 4 ../dist/opencode-mobile-unsigned-arm64.apk
+          sha256sum ../dist/opencode-mobile-unsigned-arm64.apk | tee ../dist/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-mobile-unsigned-arm64
+          path: |
+            dist/opencode-mobile-unsigned-arm64.apk
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-unsigned-${{ github.run_number }}
+          name: OpenCode Mobile Android unsigned build ${{ github.run_number }}
+          body: |
+            Unsigned Android ARM64 APK built from alvarolorentedev/opencode-mobile.
+            This APK cannot be installed until signed. See SHA256SUMS.txt.
+          files: |
+            dist/opencode-mobile-unsigned-arm64.apk
+            dist/SHA256SUMS.txt
+          make_latest: false
