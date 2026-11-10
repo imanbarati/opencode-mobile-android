@@ -1,28 +1,13 @@
-# OpenCode Mobile — Android build mirror
+# OpenCode Mobile Android build
 
-This repository builds an Android APK from the upstream OpenCode Mobile project.
+Automated Android ARM64 release APK build for [alvarolorentedev/opencode-mobile](https://github.com/alvarolorentedev/opencode-mobile), using its existing React Native / Expo Android implementation.
 
-- Upstream source: https://github.com/alvarolorentedev/opencode-mobile
-- Upstream license and notices remain authoritative; see the upstream repository before redistributing.
-- This repository contains build automation and handoff documentation. It is not a full source-code fork yet.
+## Build
+Go to **Actions → Build unsigned Android APK → Run workflow**. Select an upstream ref (default `main`). Download the `opencode-mobile-unsigned-arm64` artifact. A successful run also publishes a GitHub Release with APK and SHA-256 checksum.
 
-## Build an unsigned APK
+The workflow installs locked dependencies, runs Expo prebuild, removes the generated release signing assignment, builds `assembleRelease`, and verifies the APK is unsigned.
 
-1. Open **Actions → Build unsigned Android APK**.
-2. Select **Run workflow**.
-3. Wait for the job to finish.
-4. Download the `opencode-mobile-unsigned-arm64.apk` artifact, or use the generated GitHub Release.
+## Important
+Unsigned APKs cannot be installed directly on standard Android devices; Android requires APK signatures. This build intentionally does not use or create a signing key.
 
-The workflow checks out the upstream source at the selected ref, installs dependencies, generates the native Android project with Expo, disables release signing, builds the ARM64 release APK, and verifies that the APK is unsigned.
-
-## Install caveat
-
-An unsigned APK cannot be installed directly by Android. Android requires APK signatures. This artifact is intended for inspection, signing with your own key, or further packaging. Do not confuse an unsigned APK with a signed debug APK.
-
-## Build inputs
-
-The workflow defaults to upstream `main`. You can supply a tag or branch through the workflow input.
-
-## Scope
-
-This is a build/port handoff wrapper around the existing React Native/Expo Android implementation. It does not claim that the iOS TestFlight binary itself was decompiled or translated.
+This repository is a build wrapper, not a full source fork or a decompilation of the iOS TestFlight app. The Android implementation already exists upstream. Preserve upstream license and notices; this project is independent and is not affiliated with Apple or upstream maintainers.
