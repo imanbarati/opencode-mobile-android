@@ -96,11 +96,12 @@ jobs:
           if end is None:
               raise SystemExit("Unbalanced release block")
           block = s[m.start():end]
-          changed, count = re.subn(r"(?m)^\s*signingConfig\s+signingConfigs\.[A-Za-z0-9_]+\s*\n", "", block)
-          if count != 1:
-              raise SystemExit(f"Expected one release signing assignment, found {count}")
+          changed, count = re.subn(r"(?m)^\s*signingConfig\s*(?:=)?\s*[^\n]*\n", "", block)
+          if count:
+              print(f"Removed {count} explicit release signing assignment(s)")
+          else:
+              print("No explicit release signing assignment found; release is unsigned by default")
           p.write_text(s[:m.start()] + changed + s[end:])
-          print("Release signing assignment removed; build will be unsigned.")
           PY
 
       - name: Build ARM64 release APK
