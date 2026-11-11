@@ -79,29 +79,10 @@ jobs:
           import re
           p = Path("android/app/build.gradle")
           s = p.read_text()
-          m = re.search(r"(?m)^\s*release\s*\{", s)
-          if not m:
-              raise SystemExit("Release buildType not found")
-          brace = s.find("{", m.start())
-          depth = 0
-          end = None
-          for i in range(brace, len(s)):
-              if s[i] == "{":
-                  depth += 1
-              elif s[i] == "}":
-                  depth -= 1
-                  if depth == 0:
-                      end = i + 1
-                      break
-          if end is None:
-              raise SystemExit("Unbalanced release block")
-          block = s[m.start():end]
-          changed, count = re.subn(r"(?m)^\s*signingConfig\s*(?:=)?\s*[^\n]*\n", "", block)
-          if count:
-              print(f"Removed {count} explicit release signing assignment(s)")
-          else:
-              print("No explicit release signing assignment found; release is unsigned by default")
-          p.write_text(s[:m.start()] + changed + s[end:])
+          changed, count = re.subn(r"(?m)^\s*signingConfig\s*(?:=)?\s*[^\n]*\n", "", s)
+          p.write_text(changed)
+          print(f"Removed {count} explicit signingConfig assignment(s) from generated app Gradle file.")
+          print("The release APK will be rejected later if apksigner detects a valid signature.")
           PY
 
       - name: Build ARM64 release APK
