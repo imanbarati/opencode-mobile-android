@@ -19,7 +19,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-unsigned-${{ github.ref }}
+  group: android-unsigned-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
