@@ -11,3 +11,6 @@ The workflow installs locked dependencies, runs Expo prebuild, removes the gener
 Unsigned APKs cannot be installed directly on standard Android devices; Android requires APK signatures. This build intentionally does not use or create a signing key.
 
 This repository is a build wrapper, not a full source fork or a decompilation of the iOS TestFlight app. The Android implementation already exists upstream. Preserve upstream license and notices; this project is independent and is not affiliated with Apple or upstream maintainers.
+
+
+Build workflow trigger check: 2026-11-11. See the Actions tab for the latest build result.
