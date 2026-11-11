@@ -78,11 +78,12 @@ jobs:
           from pathlib import Path
           import re
           p = Path("android/app/build.gradle")
-          s = p.read_text()
-          changed, count = re.subn(r"(?m)^\s*signingConfig\s*(?:=)?\s*[^\n]*\n", "", s)
-          p.write_text(changed)
-          print(f"Removed {count} explicit signingConfig assignment(s) from generated app Gradle file.")
-          print("The release APK will be rejected later if apksigner detects a valid signature.")
+          lines = p.read_text().splitlines()
+          kept = [line for line in lines if not re.match(r"^[ \t]*signingConfig\b", line)]
+          removed = len(lines) - len(kept)
+          p.write_text("\n".join(kept) + "\n")
+          print(f"Removed {removed} signingConfig line(s) without changing Gradle block structure.")
+          print("Generated Gradle file remains structurally intact; apksigner check enforces unsigned output.")
           PY
 
       - name: Build ARM64 release APK
