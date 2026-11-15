@@ -1,0 +1,110 @@
+name: Build installable Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Upstream branch, tag, or commit
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-debug-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout build wrapper
+
+      - uses: actions/checkout@v4
+        name: Checkout upstream app
+        with:
+          repository: alvarolorentedev/opencode-mobile
+          ref: ${{ inputs.upstream_ref || 'main' }}
+          path: upstream
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: upstream/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Verify runner Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME/platform-tools"
+          BUILD_TOOLS="$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          echo "$ANDROID_HOME/build-tools/$BUILD_TOOLS" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        working-directory: upstream
+        run: npm ci
+
+      - name: Generate Android project
+        working-directory: upstream
+        env:
+          CI: '1'
+          EXPO_APP_VARIANT: production
+        run: npx expo prebuild --platform android --clean
+
+      - name: Build ARM64 debug APK (debug-keystore signed = installable)
+        working-directory: upstream/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug -PreactNativeArchitectures=arm64-v8a
+
+      - name: Package APK
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          mkdir -p ../dist
+          cp "$APK" ../dist/opencode-mobile-debug-arm64.apk
+          # Debug APK must verify as signed
+          apksigner verify ../dist/opencode-mobile-debug-arm64.apk
+          sha256sum ../dist/opencode-mobile-debug-arm64.apk | tee ../dist/SHA256SUMS.txt
+          ls -lh ../dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-mobile-debug-arm64
+          path: |
+            dist/opencode-mobile-debug-arm64.apk
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish installable release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-debug-${{ github.run_number }}
+          name: OpenCode Mobile Android installable (debug) build ${{ github.run_number }}
+          body: |
+            **Installable** Android ARM64 APK (signed with the standard Android **debug** keystore).
+
+            Built from [alvarolorentedev/opencode-mobile](https://github.com/alvarolorentedev/opencode-mobile).
+
+            - Enable "Install unknown apps"
+            - Debug-signed (for testing / sideload, not Play Store)
+            - See SHA256SUMS.txt
+          files: |
+            dist/opencode-mobile-debug-arm64.apk
+            dist/SHA256SUMS.txt
+          make_latest: true
+          prerelease: true
